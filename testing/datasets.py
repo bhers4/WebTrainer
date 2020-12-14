@@ -68,4 +68,6 @@ class DatasetUnitTesting(unittest.TestCase):
         return
 
 if __name__ == "__main__":
-    unittest.main()
+    import xmlrunner
+    runner = xmlrunner.XMLTestRunner(output='testing/testing-reports')
+    unittest.main(testRunner=runner)
