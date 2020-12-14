@@ -14,6 +14,7 @@ class LossUnitTesting(unittest.TestCase):
         return
 
     def get_main_dir(self):
+        print("Cwd: ", os.getcwd())
         curr_dir = os.getcwd()
         main_dir = curr_dir.split('/')
         del main_dir[-1]

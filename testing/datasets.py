@@ -15,6 +15,7 @@ class DatasetUnitTesting(unittest.TestCase):
 
     def get_main_dir(self):
         curr_dir = os.getcwd()
+        print("Current Dir: ", curr_dir)
         main_dir = curr_dir.split('/')
         del main_dir[-1]
         new_path = "/"
