@@ -14,13 +14,13 @@ class DatasetUnitTesting(unittest.TestCase):
         return
 
     def get_main_dir(self):
-        curr_dir = os.getcwd()
-        print("Current Dir: ", curr_dir)
-        main_dir = curr_dir.split('/')
-        del main_dir[-1]
-        new_path = "/"
-        for item in main_dir:
-            new_path = os.path.join(new_path, item)
+        # curr_dir = os.getcwd()
+        # print("Current Dir: ", curr_dir)
+        # main_dir = curr_dir.split('/')
+        # del main_dir[-1]
+        new_path = os.getcwd()
+        # for item in main_dir:
+        #     new_path = os.path.join(new_path, item)
         new_path = os.path.join(new_path, "webtrainer/datasets/datasets.py")
 
         # importlib util way

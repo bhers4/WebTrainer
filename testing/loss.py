@@ -14,13 +14,14 @@ class LossUnitTesting(unittest.TestCase):
         return
 
     def get_main_dir(self):
-        print("Cwd: ", os.getcwd())
-        curr_dir = os.getcwd()
-        main_dir = curr_dir.split('/')
-        del main_dir[-1]
-        new_path = "/"
-        for item in main_dir:
-            new_path = os.path.join(new_path, item)
+        # print("Cwd: ", os.getcwd())
+        # curr_dir = os.getcwd()
+        # main_dir = curr_dir.split('/')
+        # del main_dir[-1]
+        # new_path = "/"
+        # for item in main_dir:
+        #     new_path = os.path.join(new_path, item)
+        new_path = os.getcwd()
         new_path = os.path.join(new_path, "webtrainer/loss/loss.py")
 
         # importlib util way
