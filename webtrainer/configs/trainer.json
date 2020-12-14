@@ -1,0 +1,30 @@
+{
+  "name": "MNIST Project",
+  "dataset": {
+    "name": "MNIST",
+    "batch_size": 2048,
+    "shuffle": true,
+    "split": 0.8
+  },
+  "run": {
+    "num_epochs": 5
+  },
+  "models": {
+    "name": "Resnet18",
+    "task": "classification",
+    "num_classes": 10,
+    "pretrained": true
+  },
+  "loss": {
+    "name": "CrossEntropyLoss"
+  },
+  "optim": {
+    "name": "Adam",
+    "lr": 0.01
+  },
+  "server": {
+    "host": "0.0.0.0",
+    "port": 5000,
+    "active": true
+  }
+}
