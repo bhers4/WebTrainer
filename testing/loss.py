@@ -20,7 +20,7 @@ class LossUnitTesting(unittest.TestCase):
         new_path = "/"
         for item in main_dir:
             new_path = os.path.join(new_path, item)
-        new_path = os.path.join(new_path, "loss/loss.py")
+        new_path = os.path.join(new_path, "webtrainer/loss/loss.py")
 
         # importlib util way
         import importlib.util
