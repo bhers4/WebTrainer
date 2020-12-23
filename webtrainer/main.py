@@ -7,6 +7,7 @@ from loss.loss import load_loss
 from optim.optim import load_optim
 from matplotlib import pyplot as plt
 from webui.ui import WebInterface
+from models.models import ModelTasks
 
 help='deep learning framework'
 
@@ -18,11 +19,7 @@ def add_arguments(parser):
     # Once basic UI is done do "start server"
     return
 
-if __name__ == "__main__":
-    # Arg parser
-    parser = argparse.ArgumentParser(description=help)
-    add_arguments(parser)
-    args = parser.parse_args()
+def main(args):
     # Load config file
     configs_file = args.configs
     configs_file = json.load(open(configs_file, "r"))
@@ -39,6 +36,13 @@ if __name__ == "__main__":
     run_args = configs_file['run']
     # Model
     model = load_models(configs_file['models'], dataset)
+    if configs_file['models']['task'] == 'classification':
+        task = ModelTasks.classification
+    elif configs_file['models']['task'] == 'segmentation':
+        task = ModelTasks.segmentation
+    else:
+        task = ModelTasks.classification
+    
     # Trainer
     nn_trainer = Trainer()
     # Set number of epochs
@@ -50,6 +54,8 @@ if __name__ == "__main__":
     # Set Loss
     loss = load_loss(configs_file["loss"])
     nn_trainer.set_loss(loss)
+    # Task
+    nn_trainer.set_task(task)
     # Optim
     optim = load_optim(configs_file['optim'], model)
     nn_trainer.set_optim(optim)
@@ -76,7 +82,11 @@ if __name__ == "__main__":
         plt.title("Epoch losses")
         plt.legend()
         plt.show()
-'''
-    IDEA: calculate approximate data size, along with RAM target
-'''
+    return
 
+if __name__ == "__main__":
+    # Arg parser
+    parser = argparse.ArgumentParser(description=help)
+    add_arguments(parser)
+    args = parser.parse_args()
+    main(args)

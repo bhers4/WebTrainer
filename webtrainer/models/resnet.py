@@ -1,6 +1,9 @@
 import torch.nn as nn
 import torch
 from torch.hub import load_state_dict_from_url
+from collections import OrderedDict
+import torch.nn.functional as F
+import enum
 
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
@@ -14,16 +17,24 @@ model_urls = {
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
 
+
+class ModelTasks(enum.Enum):
+    classification = 1
+    segmentation = 2
+
+
 class ResNet(nn.Module):
 
-    def __init__(self, block, layers, num_classes=1000, zero_init_residual=False,
+    def __init__(self, block, layers, task, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None):
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
-
+        #
+        self.task = task
+        #
         self.inplanes = 64
         self.dilation = 1
         if replace_stride_with_dilation is None:
@@ -47,8 +58,28 @@ class ResNet(nn.Module):
                                        dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        
+        if self.task.value == 1:
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+            self.fc = nn.Linear(512 * block.expansion, num_classes)
+        elif self.task.value == 2:
+            self.upconv4_0 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+            self.upconv4_1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+            self.decoder4 = ResNet._block(512, 256, "dec4", "")
+            self.relu_s_4 = nn.PReLU()
+
+            self.upconv3_0 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+            self.upconv3_1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+            self.decoder3 = ResNet._block(256, 128, "dec3", "")
+            self.relu_s_3 = nn.PReLU()
+
+            self.upconv2_0 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+            self.upconv2_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+            self.decoder2 = ResNet._block(128, 64, "dec2", "")
+            self.relu_s_2 = nn.PReLU()
+            self.conv = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=1)
+        else:
+            print("Not classification or segmentation")
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -99,31 +130,103 @@ class ResNet(nn.Module):
         x = self.maxpool(x)
 
         x = self.layer1(x)
+        l1 = x
         x = self.layer2(x)
+        l2 = x
         x = self.layer3(x)
+        l3 = x
         x = self.layer4(x)
-
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
-
+        if self.task.value == 1:
+            x = self.avgpool(x)
+            x = torch.flatten(x, 1)
+            x = self.fc(x)
+        elif self.task.value == 2:
+            # Decoder block
+            s_d4 = F.interpolate(x, scale_factor=2)
+            s_d4 = self.upconv4_0(s_d4)
+            s_d4 = self.relu_s_4(s_d4)
+            s_d4 = self.upconv4_1(s_d4)
+            s_d4 = torch.cat((s_d4, l3), dim=1)  # This combines encoder4 and decoder 4
+            s_d4 = self.decoder4(s_d4)
+            # Decoder block
+            s_d3 = F.interpolate(s_d4, scale_factor=2)
+            s_d3 = self.upconv3_0(s_d3)
+            s_d3 = self.relu_s_3(s_d3)
+            s_d3 = self.upconv3_1(s_d3)
+            s_d3 = torch.cat((s_d3, l2), dim=1)  # This combines encoder4 and decoder 4
+            s_d3 = self.decoder3(s_d3)
+            # Decoder block
+            s_d2 = F.interpolate(s_d3, scale_factor=2)
+            s_d2 = self.upconv2_0(s_d2)
+            s_d2 = self.relu_s_2(s_d2)
+            s_d2 = self.upconv2_1(s_d2)
+            s_d2 = torch.cat((s_d2, l1), dim=1)  # This combines encoder4 and decoder 4
+            s_d2 = self.decoder2(s_d2)
+            conv = self.conv(s_d2)
+            # Interpolate quickly
+            conv = F.interpolate(conv, scale_factor=4)
+            x = F.softmax(conv)
         return x
 
     def forward(self, x):
         return self._forward_impl(x)
 
+    def _block(in_channels, features, name, norm_name):
+        if norm_name == "Group":
+            modseq = nn.Sequential(OrderedDict([
+                (name + "conv1",
+                 nn.Conv2d(in_channels=in_channels,
+                           out_channels=features,
+                           kernel_size=3,
+                           padding=1,
+                           bias=True),),
+                (name + "norm1", nn.GroupNorm(num_groups=16, num_channels=features)),
+                (name + "relu1", nn.PReLU()),
+                (name + "conv2",
+                 nn.Conv2d(in_channels=features,
+                           out_channels=features,
+                           kernel_size=3,
+                           padding=1,
+                           bias=True),),
+                (name + "norm2", nn.GroupNorm(num_groups=16, num_channels=features)),
+                (name + "relu2", nn.PReLU()),
+            ]))
+            return modseq
+        modseq = nn.Sequential(OrderedDict([
+            (name + "conv1",
+             nn.Conv2d(in_channels=in_channels,
+                       out_channels=features,
+                       kernel_size=3,
+                       padding=1,
+                       bias=True),),
+            (name + "norm1", BatchRenormalization2D(num_features=features)),
+            (name + "relu1", nn.PReLU()),
+            (name + "conv2",
+             nn.Conv2d(in_channels=features,
+                       out_channels=features,
+                       kernel_size=3,
+                       padding=1,
+                       bias=True),),
+            (name + "norm2", BatchRenormalization2D(num_features=features)),
+            (name + "relu2", nn.PReLU()),
+        ]))
+        return modseq
+
 class Resnet18(ResNet):
-    def __init__(self, num_classes=10, zero_init_residual=False,
+    def __init__(self, task=ModelTasks.classification , num_classes=10, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, in_channels=3):
-        super(ResNet, self).__init__()
-        self.in_channels = in_channels
+                 norm_layer=None, in_channels=3, out_channels=1):
+        super(Resnet18, self).__init__(block=BasicBlock, layers=[2, 2, 2, 2], task=task)
         block = BasicBlock
         layers = [2, 2, 2, 2]
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
-
+        #
+        self.task = task
+        #
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.inplanes = 64
         self.dilation = 1
         if replace_stride_with_dilation is None:
@@ -135,7 +238,7 @@ class Resnet18(ResNet):
                              "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
         self.groups = groups
         self.base_width = width_per_group
-        self.conv1 = nn.Conv2d(in_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
+        self.conv1 = nn.Conv2d(self.in_channels, self.inplanes, kernel_size=7, stride=2, padding=3,
                                bias=False)
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -147,8 +250,28 @@ class Resnet18(ResNet):
                                        dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        
+        if self.task.value == 1:
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+            self.fc = nn.Linear(512 * block.expansion, num_classes)
+        elif self.task.value == 2:
+            self.upconv4_0 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+            self.upconv4_1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+            self.decoder4 = ResNet._block(512, 256, "dec4", "")
+            self.relu_s_4 = nn.PReLU()
+
+            self.upconv3_0 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+            self.upconv3_1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+            self.decoder3 = ResNet._block(256, 128, "dec3", "")
+            self.relu_s_3 = nn.PReLU()
+
+            self.upconv2_0 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+            self.upconv2_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+            self.decoder2 = ResNet._block(128, 64, "dec2", "")
+            self.relu_s_2 = nn.PReLU()
+            self.conv = nn.Conv2d(in_channels=64, out_channels=self.out_channels, kernel_size=1)
+        else:
+            print("Not classification or segmentation")
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -166,19 +289,20 @@ class Resnet18(ResNet):
                     nn.init.constant_(m.bn3.weight, 0)
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
-        return
 
 class Resnet34(ResNet):
-    def __init__(self, num_classes=10, zero_init_residual=False,
+    def __init__(self, task=ModelTasks.classification, num_classes=10, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
                  norm_layer=None, in_channels=3):
-        super(ResNet, self).__init__()
+        super(Resnet34, self).__init__()
         self.in_channels = in_channels
         block = BasicBlock
         layers = [3, 4, 6, 3]
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
+        # Save Task
+        self.task = task
 
         self.inplanes = 64
         self.dilation = 1
@@ -342,3 +466,72 @@ class Bottleneck(nn.Module):
         out = self.relu(out)
 
         return out
+
+
+class BatchRenormalization2D(nn.Module):
+
+    def __init__(self, num_features,  eps=1e-05, momentum=0.01, r_d_max_inc_step=0.001):
+        super(BatchRenormalization2D, self).__init__()
+
+        self.eps = eps
+        self.momentum = torch.tensor(momentum, requires_grad=False)
+
+        self.gamma = torch.nn.Parameter(torch.ones((1, num_features, 1, 1)), requires_grad=True)
+        self.beta = torch.nn.Parameter(torch.zeros((1, num_features, 1, 1)), requires_grad=True)
+
+        # self.running_avg_mean = torch.nn.Parameter(torch.ones((1, num_features, 1, 1)), requires_grad=False)
+        self.running_avg_mean = torch.nn.Parameter(torch.zeros((1, num_features, 1, 1)), requires_grad=False)
+        # self.running_avg_std = torch.nn.Parameter(torch.zeros((1, num_features, 1, 1)), requires_grad=False)
+        self.running_avg_std = torch.nn.Parameter(torch.ones((1, num_features, 1, 1)), requires_grad=False)
+        self.init_flag = None
+
+        self.max_r_max = 100.0
+        self.max_d_max = 100.0
+
+        self.r_max_inc_step = r_d_max_inc_step
+        self.d_max_inc_step = r_d_max_inc_step
+
+        self.r_max = torch.tensor((1.0), requires_grad=False)
+        self.d_max = torch.tensor((0.0), requires_grad=False)
+
+    def forward(self, x):
+
+        device = self.gamma.device
+
+        batch_ch_mean = torch.mean(x, dim=(0, 2, 3), keepdim=True).to(device)
+        batch_ch_std = torch.clamp(torch.std(x, dim=(0, 2, 3), keepdim=True), self.eps, 1e10).to(device)
+
+        if self.init_flag is None:
+            self.running_avg_mean.data = batch_ch_mean
+            self.running_avg_std.data = batch_ch_std
+            self.init_flag = True
+
+        self.running_avg_std = self.running_avg_std.to(device)
+        self.running_avg_mean = self.running_avg_mean.to(device)
+        self.momentum = self.momentum.to(device)
+
+        self.r_max = self.r_max.to(device)
+        self.d_max = self.d_max.to(device)
+
+        if self.training:
+            r = torch.clamp(batch_ch_std / (self.running_avg_std), 1.0 / self.r_max, self.r_max).to(device).data.to(device)
+            d = torch.clamp((batch_ch_mean - self.running_avg_mean) / (self.running_avg_std), -self.d_max, self.d_max).to(device).data.to(device)
+
+            x = ((x - batch_ch_mean)*r)/batch_ch_std + d
+            # x = self.gamma * x + self.beta
+
+            if self.r_max < self.max_r_max:
+                self.r_max += self.r_max_inc_step * x.shape[0]
+
+            if self.d_max < self.max_d_max:
+                self.d_max += self.d_max_inc_step * x.shape[0]
+
+        else:
+            x = (x - self.running_avg_mean.data) / self.running_avg_std.data
+
+        x = self.gamma * x + self.beta
+
+        if self.training:
+            self.running_avg_mean.data = self.running_avg_mean.data + self.momentum * (batch_ch_mean.data.to(device) - self.running_avg_mean)
+            self.running_avg_std.data = self.running_avg_std.data + self.momentum * (batch_ch_std.data.to(device) - self.running_avg_std)
+        return x

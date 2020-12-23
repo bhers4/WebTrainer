@@ -6,6 +6,11 @@ import os
 import json
 
 
+class ModelTasks(enum.Enum):
+    classification = 1
+    segmentation = 2
+
+
 # Main Trainer
 class Trainer(object):
 
@@ -20,7 +25,8 @@ class Trainer(object):
         self.dataset_trainer = None
         self.train_dataset = None
         self.test_dataset = None
-
+        # Task
+        self.task = None
         # Flag to say good to train
         self.valid_args = False
         # Model
@@ -55,6 +61,10 @@ class Trainer(object):
 
     def set_trainer_dataset(self, dataset):
         self.dataset_trainer = dataset
+        return
+
+    def set_task(self, task):
+        self.task = task
         return
 
     # Model Getters/Setters
@@ -98,11 +108,16 @@ class Trainer(object):
             inputs = data[0].to(self.device)
             targets = data[1].to(self.device)
             output = self.model(inputs)
-            prediction = torch.max(output, dim=1)[1]
-            correct = (prediction == targets).sum()
-            self.test_correct += correct.item()
-            self.test_total += prediction.shape[0]
-            local_loss = self.loss(output, targets)
+            if self.task.value == 1:
+                prediction = torch.max(output, dim=1)[1]
+                correct = (prediction == targets).sum()
+                self.test_correct += correct.item()
+                self.test_total += prediction.shape[0]
+                local_loss = self.loss(output.long(), targets)
+            elif self.task.value == 2:
+                targets = targets.squeeze(1)
+                local_loss = self.loss(output, targets.long())
+            # local_loss = self.loss(output, targets)
             local_loss.backward()
             self.optim.step()
             self.test_losses.append(local_loss.item())
@@ -202,7 +217,6 @@ class Trainer(object):
         # Set device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
-
         print("Starting training...")
         for epoch in range(self.num_epoch):
             # Get iterators
@@ -220,28 +234,58 @@ class Trainer(object):
                 targets = data[1].to(self.device)
                 # Get output
                 output = self.model(inputs)
-                prediction = torch.max(output, dim=1)[1]
-                correct = (prediction == targets).sum()
-                self.train_correct += correct.item()
-                self.train_total += prediction.shape[0]
-                local_loss = self.loss(output, targets)
+                if self.task.value == 1:
+                    prediction = torch.max(output, dim=1)[1]
+                    correct = (prediction == targets).sum()
+                    self.train_correct += correct.item()
+                    self.train_total += prediction.shape[0]
+                # local_loss = self.loss(output, targets)
+                    local_loss = self.loss(output.long(), targets)
+                elif self.task.value == 2:
+                    targets = targets.squeeze(1)
+                    local_loss = self.loss(output, targets.long())
                 local_loss.backward()
                 self.optim.step()
                 self.iter_losses.append(local_loss.item())
+            # Append average loss of the epoch
             self.epoch_losses.append(np.mean(self.iter_losses))
+            # Get Test loss
             test_loss = self.test_network(self.test_dataset)
+            # Log Test Loss
             self.epoch_test_losses.append(test_loss)
-            test_acc = self.test_correct / self.test_total
-            train_acc = self.train_correct / self.train_total
+            test_acc = self.test_correct / (self.test_total+1)
+            train_acc = self.train_correct / (self.train_total+1)
             self.test_accs.append(test_acc)
+            self.train_accs.append(self.train_correct/(self.train_total+1))
+            # End of Epoch Print
             print("Epoch: %d, Loss: %.4f, Test Loss: %.4f, Train Acc: %.2f Test Acc: %.2f" % (epoch,
-                                                                                              self.epoch_losses[-1],
-                                                                                              test_loss,
-                                                                                              train_acc*100,
-                                                                                              test_acc*100))
-            self.train_accs.append(self.train_correct/self.train_total)
+                                                                                                  self.epoch_losses[
+                                                                                                      -1],
+                                                                                                  test_loss,
+                                                                                                  train_acc * 100,
+                                                                                                  test_acc * 100))
         self.save()
         self.active = False
+
+        # TEMPORARY thing 
+        from matplotlib import pyplot as plt
+        print("Self dataset trainer mapping: ", self.dataset_trainer.json_mapping)
+        for i, data in enumerate(self.dataset_trainer.get_test_iter(), 0):
+            inputs = data[0].to(self.device)
+            targets = data[1].to(self.device)
+            output = self.model(inputs)
+            prediction = torch.max(output, dim=1)[1]
+            for j in range(inputs.shape[0]):
+                img = inputs[j].permute(1, 2, 0)
+                print("Img shape: ", img.shape)
+                img = img.cpu().detach().numpy()
+                plt.imshow(img)
+                pred = prediction[j]
+                print("Pred shape: ", pred.shape)
+                pred = pred.cpu().detach().numpy()
+                plt.imshow(pred, alpha=0.3)
+                plt.show()
+
         return
 
     def save(self):
