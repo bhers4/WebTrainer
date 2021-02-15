@@ -113,7 +113,8 @@ class Trainer(object):
                 correct = (prediction == targets).sum()
                 self.test_correct += correct.item()
                 self.test_total += prediction.shape[0]
-                local_loss = self.loss(output.long(), targets)
+                # Dont convert output to long
+                local_loss = self.loss(output, targets)
             elif self.task.value == 2:
                 targets = targets.squeeze(1)
                 local_loss = self.loss(output, targets.long())
@@ -165,11 +166,16 @@ class Trainer(object):
                     targets = data[1].to(self.device)
                     # Get output
                     output = self.model(inputs)
-                    prediction = torch.max(output, dim=1)[1]
-                    correct = (prediction == targets).sum()
-                    self.train_correct += correct.item()
-                    self.train_total += prediction.shape[0]
-                    local_loss = self.loss(output, targets)
+                    if self.task.value == 1:
+                        prediction = torch.max(output, dim=1)[1]
+                        correct = (prediction == targets).sum()
+                        self.train_correct += correct.item()
+                        self.train_total += prediction.shape[0]
+                        # Dont convert to long
+                        local_loss = self.loss(output, targets)
+                    elif self.task.value == 2:
+                        targets = targets.squeeze(1)
+                        local_loss = self.loss(output, targets.long())
                     local_loss.backward()
                     self.optim.step()
                     self.iter_losses.append(local_loss.item())
@@ -188,6 +194,40 @@ class Trainer(object):
                 self.train_accs.append(self.train_correct / self.train_total)
             self.save()
             self.active = False
+
+
+    def save_epoch_imgs(self):
+        from matplotlib import pyplot as plt
+        data = self.train_dataset.next()
+        data_input = data[0]
+        data_targets = data[1]
+        # print("Data, input: ", data_input.shape, " target: ", data_targets.shape)
+        # They will be 4d tensors
+        if data_input.shape[0] >= 3:
+            data_0 = data_input[0, :, :, :]
+            data_1 = data_input[1, :, :, :]
+            data_2 = data_input[2, :, :, :]
+            # print("Data 0: ", data_0.shape, " 1: ", data_1.shape, " 2: ", data_2.shape)
+            # Get cwd
+            curr_dir = os.getcwd()
+            # print("Curr dir: ", curr_dir)
+            ui_static_dir = os.path.join(curr_dir, "webui/static/images")
+            if not os.path.isdir(ui_static_dir):
+                os.mkdir(ui_static_dir)
+            d_0 = np.zeros((data_0.shape[1], data_0.shape[2], data_0.shape[0]))
+            for j in range(data_0.shape[0]):
+                d_0[:, :, j] = data_0[j, :, :]
+            d_1 = np.zeros((data_1.shape[1], data_1.shape[2], data_1.shape[0]))
+            for j in range(data_1.shape[0]):
+                d_1[:, :, j] = data_1[j, :, :]
+            d_2 = np.zeros((data_2.shape[1], data_2.shape[2], data_2.shape[0]))
+            for j in range(data_2.shape[0]):
+                d_2[:, :, j] = data_2[j, :, :]
+            # TODO check that dim is 3 or 4 cause grayscale might need to do PIL image convert('RGB')
+            plt.imsave(os.path.join(ui_static_dir, "data_0.png"), d_0)
+            plt.imsave(os.path.join(ui_static_dir, "data_1.png"), d_1)
+            plt.imsave(os.path.join(ui_static_dir, "data_2.png"), d_2)
+        return
 
     def train_network(self, train_info):
         self.check_parameters()
@@ -226,7 +266,8 @@ class Trainer(object):
             self.iter_losses = []
             self.train_correct = 0
             self.train_total = 0
-
+            # Get first 3 images
+            self.save_epoch_imgs()
             # Enumerate over dataset
             for i, data in enumerate(self.train_dataset, 0):
                 self.optim.zero_grad()
@@ -239,8 +280,8 @@ class Trainer(object):
                     correct = (prediction == targets).sum()
                     self.train_correct += correct.item()
                     self.train_total += prediction.shape[0]
-                # local_loss = self.loss(output, targets)
-                    local_loss = self.loss(output.long(), targets)
+                    # Dont convert to long
+                    local_loss = self.loss(output, targets)
                 elif self.task.value == 2:
                     targets = targets.squeeze(1)
                     local_loss = self.loss(output, targets.long())
@@ -267,25 +308,23 @@ class Trainer(object):
         self.save()
         self.active = False
 
-        # TEMPORARY thing 
-        from matplotlib import pyplot as plt
-        print("Self dataset trainer mapping: ", self.dataset_trainer.json_mapping)
-        for i, data in enumerate(self.dataset_trainer.get_test_iter(), 0):
-            inputs = data[0].to(self.device)
-            targets = data[1].to(self.device)
-            output = self.model(inputs)
-            prediction = torch.max(output, dim=1)[1]
-            for j in range(inputs.shape[0]):
-                img = inputs[j].permute(1, 2, 0)
-                print("Img shape: ", img.shape)
-                img = img.cpu().detach().numpy()
-                plt.imshow(img)
-                pred = prediction[j]
-                print("Pred shape: ", pred.shape)
-                pred = pred.cpu().detach().numpy()
-                plt.imshow(pred, alpha=0.3)
-                plt.show()
-
+        # TEMPORARY thing
+        if self.task.value == 2 and not self.config['server']['active']:
+            from matplotlib import pyplot as plt
+            print("Self dataset trainer mapping: ", self.dataset_trainer.json_mapping)
+            for i, data in enumerate(self.dataset_trainer.get_test_iter(), 0):
+                inputs = data[0].to(self.device)
+                targets = data[1].to(self.device)
+                output = self.model(inputs)
+                prediction = torch.max(output, dim=1)[1]
+                for j in range(inputs.shape[0]):
+                    img = inputs[j].permute(1, 2, 0)
+                    img = img.cpu().detach().numpy()
+                    plt.imshow(img)
+                    pred = prediction[j]
+                    pred = pred.cpu().detach().numpy()
+                    plt.imshow(pred, alpha=0.3)
+                    plt.show()
         return
 
     def save(self):

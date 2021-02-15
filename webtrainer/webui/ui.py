@@ -26,9 +26,10 @@ class WebInterface:
         self.add_endpoint('/', endpoint_name='main_page', handler=self.render_mainpage, methods=['GET'])
         self.add_endpoint('/webui/static/<file>', endpoint_name='server static files', handler=self.get_static_file,
                           methods=['GET'])
-        self.add_endpoint('/train/data/', endpoint_name='train_data', handler=self.get_training_data, methods=['GET'])
         self.add_endpoint('/train', endpoint_name='train_start', handler=self.train_page, methods=['POST'])
+        self.add_endpoint('/train/data/', endpoint_name='train_data', handler=self.get_training_data, methods=['GET'])
         self.add_endpoint('/train/add', endpoint_name='add_more_epochs', handler=self.add_more_epochs, methods=['POST'])
+        self.add_endpoint('/train/imgs', endpoint_name='show_train_imgs', handler=self.get_train_imgs, methods=['GET'])
         return
 
     def add_endpoint(self, endpoint=None, endpoint_name=None, handler=None, methods=None):
@@ -42,19 +43,23 @@ class WebInterface:
             print("No app setup which shouldn't be possible")
         return
 
+    # Setter for Trainer
     def set_trainer(self, trainer):
         self.trainer = trainer
         return
 
+    # Getter for Trainer
     def get_trainer(self):
         return self.trainer
 
+    # Calls Trainer Main Training Loop
     def train(self, train_info):
         self.trainer.train_network(train_info)
         return
 
     # /train
     def train_page(self):
+        # Get Form info
         project_name = request.form['project_name']
         dataset_name = request.form['dataset_name']
         batch_size = int(request.form['batch_size'])
@@ -101,6 +106,17 @@ class WebInterface:
         train_func.start()
         return json.dumps({'status':'OK'})
 
+    # Get train imgs
+    def get_train_imgs(self):
+        # Start by getting /static/images/ dir
+        imgs_dir = os.path.join(os.getcwd(), "webui/static/images/")
+        imgs_found = []
+        for root, dirs, files in os.walk(imgs_dir):
+            for file in files:
+                if "data_" in file and file.endswith(".png"):
+                    imgs_found.append(file)
+        return json.dumps({'status': 'OK', 'imgs_found':imgs_found})
+
     # Rendering Functions
     # /
     def render_mainpage(self):
@@ -111,6 +127,7 @@ class WebInterface:
                                split=self.trainer.config['dataset']['split'],
                                num_epochs=self.trainer.config['run']['num_epochs'],
                                model=self.trainer.config['models']['name'],
+                               task=self.trainer.config['models']['task'],
                                num_classes=self.trainer.config['models']['num_classes'],
                                lr=self.trainer.config['optim']['lr'],
                                optim=self.trainer.config['optim']['name'])

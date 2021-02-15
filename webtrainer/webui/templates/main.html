@@ -94,12 +94,18 @@
             <div class="col-lg-12">
                 <h4>Graphs</h4>
             </div>
-            <div class="col-lg-6">
-                <canvas id="acc_graphs"></canvas>
-            </div>
-            <div class="col-lg-6">
-                <canvas id="training_graph"></canvas>
-            </div>
+            {% if task=='classification' %}
+                <div class="col-lg-6">
+                    <canvas id="acc_graphs"></canvas>
+                </div>
+                <div class="col-lg-6">
+                    <canvas id="training_graph"></canvas>
+                </div>
+            {% else %}
+                <div class="col-lg-12">
+                    <canvas id="training_graph"></canvas>
+                </div>
+            {% endif %}
         </div>
 <!--    1 more, 5 more, 10 more epochs buttons-->
         <div class="row">
@@ -112,6 +118,10 @@
             <div class="col-lg-3 col-md-4 col-sm-6">
                 <button id="add_10" class="btn btn-info">Run 10 More Epochs</button>
             </div>
+        </div>
+        <!-- Show 3 images -->
+        <div class="row" id="imgs_row">
+            
         </div>
     </div>
 </body>

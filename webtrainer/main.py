@@ -76,10 +76,14 @@ def main(args):
         epoch_losses = nn_trainer.epoch_losses
         epoch_test_losses = nn_trainer.epoch_test_losses
         test_accs = nn_trainer.test_accs
+        plt.subplot(1, 2, 1)
         plt.plot(epoch_losses, c='b', label='train')
         plt.plot(epoch_test_losses, c='r', label='test')
-        plt.plot(test_accs, c='m', label='Test Acc')
         plt.title("Epoch losses")
+        plt.subplot(1, 2, 2)
+        plt.plot(nn_trainer.train_accs, c='b', label='Train Acc')
+        plt.plot(test_accs, c='m', label='Test Acc')
+        plt.title("Accuracies")
         plt.legend()
         plt.show()
     return

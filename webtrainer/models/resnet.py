@@ -27,7 +27,7 @@ class ResNet(nn.Module):
 
     def __init__(self, block, layers, task, num_classes=1000, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None):
+                 norm_layer=None, out_channels=1):
         super(ResNet, self).__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
@@ -63,21 +63,7 @@ class ResNet(nn.Module):
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
             self.fc = nn.Linear(512 * block.expansion, num_classes)
         elif self.task.value == 2:
-            self.upconv4_0 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
-            self.upconv4_1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
-            self.decoder4 = ResNet._block(512, 256, "dec4", "")
-            self.relu_s_4 = nn.PReLU()
-
-            self.upconv3_0 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
-            self.upconv3_1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
-            self.decoder3 = ResNet._block(256, 128, "dec3", "")
-            self.relu_s_3 = nn.PReLU()
-
-            self.upconv2_0 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
-            self.upconv2_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
-            self.decoder2 = ResNet._block(128, 64, "dec2", "")
-            self.relu_s_2 = nn.PReLU()
-            self.conv = nn.Conv2d(in_channels=64, out_channels=1, kernel_size=1)
+            self.init_segmentation_head(out_channels)
         else:
             print("Not classification or segmentation")
 
@@ -97,6 +83,24 @@ class ResNet(nn.Module):
                     nn.init.constant_(m.bn3.weight, 0)
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
+
+    def init_segmentation_head(self, out_channels=1):
+        self.upconv4_0 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv4_1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder4 = ResNet._block(512, 256, "dec4", "")
+        self.relu_s_4 = nn.PReLU()
+
+        self.upconv3_0 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv3_1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder3 = ResNet._block(256, 128, "dec3", "")
+        self.relu_s_3 = nn.PReLU()
+
+        self.upconv2_0 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv2_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder2 = ResNet._block(128, 64, "dec2", "")
+        self.relu_s_2 = nn.PReLU()
+        self.conv = nn.Conv2d(in_channels=64, out_channels=out_channels, kernel_size=1)
+        return
 
     def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
         norm_layer = self._norm_layer
@@ -128,7 +132,6 @@ class ResNet(nn.Module):
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
-
         x = self.layer1(x)
         l1 = x
         x = self.layer2(x)
@@ -141,35 +144,39 @@ class ResNet(nn.Module):
             x = torch.flatten(x, 1)
             x = self.fc(x)
         elif self.task.value == 2:
-            # Decoder block
-            s_d4 = F.interpolate(x, scale_factor=2)
-            s_d4 = self.upconv4_0(s_d4)
-            s_d4 = self.relu_s_4(s_d4)
-            s_d4 = self.upconv4_1(s_d4)
-            s_d4 = torch.cat((s_d4, l3), dim=1)  # This combines encoder4 and decoder 4
-            s_d4 = self.decoder4(s_d4)
-            # Decoder block
-            s_d3 = F.interpolate(s_d4, scale_factor=2)
-            s_d3 = self.upconv3_0(s_d3)
-            s_d3 = self.relu_s_3(s_d3)
-            s_d3 = self.upconv3_1(s_d3)
-            s_d3 = torch.cat((s_d3, l2), dim=1)  # This combines encoder4 and decoder 4
-            s_d3 = self.decoder3(s_d3)
-            # Decoder block
-            s_d2 = F.interpolate(s_d3, scale_factor=2)
-            s_d2 = self.upconv2_0(s_d2)
-            s_d2 = self.relu_s_2(s_d2)
-            s_d2 = self.upconv2_1(s_d2)
-            s_d2 = torch.cat((s_d2, l1), dim=1)  # This combines encoder4 and decoder 4
-            s_d2 = self.decoder2(s_d2)
-            conv = self.conv(s_d2)
-            # Interpolate quickly
-            conv = F.interpolate(conv, scale_factor=4)
-            x = F.softmax(conv)
+            x = self.forward_seg_head(x, l3, l2, l1)
         return x
 
     def forward(self, x):
         return self._forward_impl(x)
+
+    def forward_seg_head(self, x, l3, l2, l1):
+        # Decoder block
+        s_d4 = F.interpolate(x, scale_factor=2)
+        s_d4 = self.upconv4_0(s_d4)
+        s_d4 = self.relu_s_4(s_d4)
+        s_d4 = self.upconv4_1(s_d4)
+        s_d4 = torch.cat((s_d4, l3), dim=1)  # This combines encoder4 and decoder 4
+        s_d4 = self.decoder4(s_d4)
+        # Decoder block
+        s_d3 = F.interpolate(s_d4, scale_factor=2)
+        s_d3 = self.upconv3_0(s_d3)
+        s_d3 = self.relu_s_3(s_d3)
+        s_d3 = self.upconv3_1(s_d3)
+        s_d3 = torch.cat((s_d3, l2), dim=1)  # This combines encoder4 and decoder 4
+        s_d3 = self.decoder3(s_d3)
+        # Decoder block
+        s_d2 = F.interpolate(s_d3, scale_factor=2)
+        s_d2 = self.upconv2_0(s_d2)
+        s_d2 = self.relu_s_2(s_d2)
+        s_d2 = self.upconv2_1(s_d2)
+        s_d2 = torch.cat((s_d2, l1), dim=1)  # This combines encoder4 and decoder 4
+        s_d2 = self.decoder2(s_d2)
+        conv = self.conv(s_d2)
+        # Interpolate quickly
+        conv = F.interpolate(conv, scale_factor=4)
+        x = F.softmax(conv)
+        return x
 
     def _block(in_channels, features, name, norm_name):
         if norm_name == "Group":
@@ -255,21 +262,7 @@ class Resnet18(ResNet):
             self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
             self.fc = nn.Linear(512 * block.expansion, num_classes)
         elif self.task.value == 2:
-            self.upconv4_0 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
-            self.upconv4_1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
-            self.decoder4 = ResNet._block(512, 256, "dec4", "")
-            self.relu_s_4 = nn.PReLU()
-
-            self.upconv3_0 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
-            self.upconv3_1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
-            self.decoder3 = ResNet._block(256, 128, "dec3", "")
-            self.relu_s_3 = nn.PReLU()
-
-            self.upconv2_0 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
-            self.upconv2_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
-            self.decoder2 = ResNet._block(128, 64, "dec2", "")
-            self.relu_s_2 = nn.PReLU()
-            self.conv = nn.Conv2d(in_channels=64, out_channels=self.out_channels, kernel_size=1)
+            self.init_segmentation_head(out_channels)
         else:
             print("Not classification or segmentation")
 
@@ -290,11 +283,29 @@ class Resnet18(ResNet):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
+    def init_segmentation_head(self, out_channels):
+        self.upconv4_0 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv4_1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder4 = ResNet._block(512, 256, "dec4", "")
+        self.relu_s_4 = nn.PReLU()
+
+        self.upconv3_0 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv3_1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder3 = ResNet._block(256, 128, "dec3", "")
+        self.relu_s_3 = nn.PReLU()
+
+        self.upconv2_0 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv2_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder2 = ResNet._block(128, 64, "dec2", "")
+        self.relu_s_2 = nn.PReLU()
+        self.conv = nn.Conv2d(in_channels=64, out_channels=out_channels, kernel_size=1)
+        return
+
 class Resnet34(ResNet):
     def __init__(self, task=ModelTasks.classification, num_classes=10, zero_init_residual=False,
                  groups=1, width_per_group=64, replace_stride_with_dilation=None,
-                 norm_layer=None, in_channels=3):
-        super(Resnet34, self).__init__()
+                 norm_layer=None, in_channels=3, out_channels=1):
+        super(Resnet34, self).__init__(block=BasicBlock, layers=[3, 4, 6, 3], task=task)
         self.in_channels = in_channels
         block = BasicBlock
         layers = [3, 4, 6, 3]
@@ -327,8 +338,13 @@ class Resnet34(ResNet):
                                        dilate=replace_stride_with_dilation[1])
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
                                        dilate=replace_stride_with_dilation[2])
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = nn.Linear(512 * block.expansion, num_classes)
+        if self.task.value == 1:
+            self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+            self.fc = nn.Linear(512 * block.expansion, num_classes)
+        elif self.task.value == 2:
+            self.init_segmentation_head(out_channels)
+        else:
+            print("Not classification or segmentation")
 
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
@@ -346,6 +362,23 @@ class Resnet34(ResNet):
                     nn.init.constant_(m.bn3.weight, 0)
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
+
+    def init_segmentation_head(self, out_channels):
+        self.upconv4_0 = nn.Conv2d(in_channels=512, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv4_1 = nn.Conv2d(in_channels=256, out_channels=256, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder4 = ResNet._block(512, 256, "dec4", "")
+        self.relu_s_4 = nn.PReLU()
+
+        self.upconv3_0 = nn.Conv2d(in_channels=256, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv3_1 = nn.Conv2d(in_channels=128, out_channels=128, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder3 = ResNet._block(256, 128, "dec3", "")
+        self.relu_s_3 = nn.PReLU()
+
+        self.upconv2_0 = nn.Conv2d(in_channels=128, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+        self.upconv2_1 = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=(3, 3), padding=1, bias=True)
+        self.decoder2 = ResNet._block(128, 64, "dec2", "")
+        self.relu_s_2 = nn.PReLU()
+        self.conv = nn.Conv2d(in_channels=64, out_channels=out_channels, kernel_size=1)
         return
 
 def _resnet(arch, block, layers, pretrained, progress, **kwargs):

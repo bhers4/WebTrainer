@@ -249,5 +249,35 @@ function check_status(){
             acc_graph.data.datasets[1].data = test_accs;
             acc_graph.update();
         }
-    })
+    });
+
+    // Do another ajax request to update image div
+    $.ajax({
+        url: '/train/imgs',
+        type: 'GET',
+        dataType: 'json',
+        success: (response)=>{
+            var imgs_found = response.imgs_found;
+            // console.log("Images found: ", imgs_found.length);
+            // Get imgs row
+            var imgs_row_div = document.getElementById('imgs_row');
+            console.log("imgs row div: ", imgs_row_div);
+            if (imgs_row_div.innerHTML != ""){
+                imgs_row_div.innerHTML = "";  // This clears the div
+            }
+            var i;
+            for(i=0;i<(imgs_found.length);i++){
+                // Create overall div (lg-4 md-6)
+                var img_div = document.createElement('div');
+                img_div.className = "col-lg-4 col-md-6";
+                var actual_img = document.createElement('img');
+                actual_img.src = "static/images/" + imgs_found[i];
+                console.log("Actual img src: ", actual_img.src);
+                // Add img to col then add col to row
+                img_div.appendChild(actual_img);
+                imgs_row_div.appendChild(img_div);
+            }
+        }
+    });
+
 }

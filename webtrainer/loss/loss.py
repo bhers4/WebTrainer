@@ -1,4 +1,5 @@
 import torch
+import numpy as np
 
 
 supported_losses = ['BCELoss', 'CrossEntropyLoss', "NLLLoss", "CustomCrossEntropyLoss"]
@@ -26,20 +27,8 @@ def load_loss(loss_info, custom_loss=None):
 
 def CustomCrossEntropyLoss(outputs, targets):
     # Try weights 0
-    weights = [0, 1, 1, 1, 1, 1, 1]
+    weights = np.ones((outputs.shape[1],))
+    weights[0] = 0
     weighted_celoss = torch.nn.CrossEntropyLoss(weight=torch.tensor(weights).float().cuda())
     loss = weighted_celoss(outputs, targets)
-    # Find where targets isnt 0
-    
-    # mask = targets != 0
-    # output_mask = torch.zeros_like(outputs)
-    # # Create mask
-    # for i in range(output_mask.shape[1]):
-    #     output_mask[:, i, :, :] = targets
-
-    # output_select = outputs[output_mask != 0]
-    # targets_select = targets[mask]
-    # print("Output select: ", output_select.shape)
-    # print("targets_select: ", targets_select.shape)
-    # loss = torch.nn.CrossEntropyLoss(output_select, targets_select)
     return loss
