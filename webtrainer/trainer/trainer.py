@@ -50,6 +50,8 @@ class Trainer(object):
         self.run_id = None
         # Saved For some +1 and +5 epochs logic
         self.saved = False
+        # Save imgs dict
+        self.save_img_info = {}
         return
 
     def set_epochs(self, num_epochs):
@@ -197,36 +199,75 @@ class Trainer(object):
 
 
     def save_epoch_imgs(self):
-        from matplotlib import pyplot as plt
-        data = self.train_dataset.next()
-        data_input = data[0]
-        data_targets = data[1]
-        # print("Data, input: ", data_input.shape, " target: ", data_targets.shape)
-        # They will be 4d tensors
-        if data_input.shape[0] >= 3:
-            data_0 = data_input[0, :, :, :]
-            data_1 = data_input[1, :, :, :]
-            data_2 = data_input[2, :, :, :]
-            # print("Data 0: ", data_0.shape, " 1: ", data_1.shape, " 2: ", data_2.shape)
-            # Get cwd
-            curr_dir = os.getcwd()
-            # print("Curr dir: ", curr_dir)
-            ui_static_dir = os.path.join(curr_dir, "webui/static/images")
-            if not os.path.isdir(ui_static_dir):
-                os.mkdir(ui_static_dir)
-            d_0 = np.zeros((data_0.shape[1], data_0.shape[2], data_0.shape[0]))
-            for j in range(data_0.shape[0]):
-                d_0[:, :, j] = data_0[j, :, :]
-            d_1 = np.zeros((data_1.shape[1], data_1.shape[2], data_1.shape[0]))
-            for j in range(data_1.shape[0]):
-                d_1[:, :, j] = data_1[j, :, :]
-            d_2 = np.zeros((data_2.shape[1], data_2.shape[2], data_2.shape[0]))
-            for j in range(data_2.shape[0]):
-                d_2[:, :, j] = data_2[j, :, :]
-            # TODO check that dim is 3 or 4 cause grayscale might need to do PIL image convert('RGB')
-            plt.imsave(os.path.join(ui_static_dir, "data_0.png"), d_0)
-            plt.imsave(os.path.join(ui_static_dir, "data_1.png"), d_1)
-            plt.imsave(os.path.join(ui_static_dir, "data_2.png"), d_2)
+        if self.task.value == 1:  # This makes sure we only do this for classification
+            from matplotlib import pyplot as plt
+            from PIL import Image
+            data = self.train_dataset.next()
+            # Get classes
+            data_classes = self.dataset_trainer.train_dataset.classes
+            # print("Data classes: ", data_classes)
+            data_input = data[0]
+            data_targets = data[1]
+            # They will be 4d tensors
+            if data_input.shape[0] >= 3:
+                data_0 = data_input[0, :, :, :]
+                target_0 = data_targets[0].item()
+                target_0 = data_classes[target_0]
+                data_1 = data_input[1, :, :, :]
+                target_1 = data_targets[1].item()
+                target_1 = data_classes[target_1]
+                data_2 = data_input[2, :, :, :]
+                target_2 = data_targets[2].item()
+                target_2 = data_classes[target_2]
+                self.save_img_info['target_0'] = target_0
+                self.save_img_info['target_1'] = target_1
+                self.save_img_info['target_2'] = target_2
+                # Get predictions
+                output = self.model(data_input.cuda())
+                prediction = torch.max(output, dim=1)[1]
+                pred_0 = data_classes[prediction[0]]
+                pred_1 = data_classes[prediction[1]]
+                pred_2 = data_classes[prediction[2]]
+                self.save_img_info['pred_0'] = pred_0
+                self.save_img_info['pred_1'] = pred_1
+                self.save_img_info['pred_2'] = pred_2
+                # Get cwd
+                curr_dir = os.getcwd()
+                # print("Curr dir: ", curr_dir)
+                ui_static_dir = os.path.join(curr_dir, "webui/static/images")
+                if not os.path.isdir(ui_static_dir):
+                    os.mkdir(ui_static_dir)
+                
+                d_0 = np.zeros((data_0.shape[1], data_0.shape[2], data_0.shape[0]))
+                for j in range(data_0.shape[0]):
+                    d_0[:, :, j] = data_0[j, :, :]
+                # Check if image is from 0->1
+                if np.max(d_0) <= 1.0:
+                    d_0 = d_0 * 255
+                    d_0 = d_0.astype(np.uint8)
+                d_1 = np.zeros((data_1.shape[1], data_1.shape[2], data_1.shape[0]))
+                for j in range(data_1.shape[0]):
+                    d_1[:, :, j] = data_1[j, :, :]
+                # Check if image is from 0->1
+                if np.max(d_1) <= 1.0:
+                    d_1 = d_1 * 255
+                    d_1 = d_1.astype(np.uint8)
+                d_2 = np.zeros((data_2.shape[1], data_2.shape[2], data_2.shape[0]))
+                for j in range(data_2.shape[0]):
+                    d_2[:, :, j] = data_2[j, :, :]
+                # Check if image is from 0->1
+                if np.max(d_2) <= 1.0:
+                    d_2 = d_2 * 255
+                    d_2 = d_2.astype(np.uint8)
+                if d_0.shape[2] == 1:
+                    d_0 = np.array(Image.fromarray(d_0[:, :, 0]).convert('RGB'))
+                if d_1.shape[2] == 1:
+                    d_1 = np.array(Image.fromarray(d_1[:, :, 0]).convert('RGB'))
+                if d_2.shape[2] == 1:
+                    d_2 = np.array(Image.fromarray(d_2[:, :, 0]).convert('RGB'))
+                plt.imsave(os.path.join(ui_static_dir, "data_0.png"), d_0)
+                plt.imsave(os.path.join(ui_static_dir, "data_1.png"), d_1)
+                plt.imsave(os.path.join(ui_static_dir, "data_2.png"), d_2)
         return
 
     def train_network(self, train_info):

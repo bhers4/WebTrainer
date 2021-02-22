@@ -24,8 +24,13 @@ class WebInterface:
     def setup_routes(self):
         # Main route
         self.add_endpoint('/', endpoint_name='main_page', handler=self.render_mainpage, methods=['GET'])
+        # Basic js file route
         self.add_endpoint('/webui/static/<file>', endpoint_name='server static files', handler=self.get_static_file,
                           methods=['GET'])
+        # Basic get images from /webui/static/images
+        self.add_endpoint('/webui/static/images/<file>', endpoint_name='static_images', handler=self.get_static_images, 
+                          methods=['GET'])
+        # Training Endpoints
         self.add_endpoint('/train', endpoint_name='train_start', handler=self.train_page, methods=['POST'])
         self.add_endpoint('/train/data/', endpoint_name='train_data', handler=self.get_training_data, methods=['GET'])
         self.add_endpoint('/train/add', endpoint_name='add_more_epochs', handler=self.add_more_epochs, methods=['POST'])
@@ -79,6 +84,12 @@ class WebInterface:
         from flask import send_from_directory
         static_file = os.path.join(os.getcwd(), 'webui/static/')
         return send_from_directory(static_file, file)
+    
+    # /webui/static/images
+    def get_static_images(self, file):
+        from flask import send_from_directory
+        static_file = os.path.join(os.getcwd(), 'webui/static/images/')
+        return send_from_directory(static_file, file)
 
     # /train/data
     def get_training_data(self):
@@ -91,7 +102,8 @@ class WebInterface:
         curr_active = self.trainer.active
         return json.dumps({'status':'OK', 'epoch_loss':epoch_loss, 'epoch_test_losses':epoch_test_losses,
                            'test_accs':test_accs, 'curr_epoch':curr_epoch,'total_epochs':total_epochs,
-                           'curr_active':curr_active, 'train_accs': train_accs})
+                           'curr_active':curr_active, 'train_accs': train_accs, 
+                           'trainer_task': self.trainer.task.value})
 
     def add_more_epochs(self):
         project_name = request.form['project_name']
@@ -110,12 +122,16 @@ class WebInterface:
     def get_train_imgs(self):
         # Start by getting /static/images/ dir
         imgs_dir = os.path.join(os.getcwd(), "webui/static/images/")
-        imgs_found = []
+        imgs_found = {}
         for root, dirs, files in os.walk(imgs_dir):
             for file in files:
                 if "data_" in file and file.endswith(".png"):
-                    imgs_found.append(file)
-        return json.dumps({'status': 'OK', 'imgs_found':imgs_found})
+                    # imgs_found.append(file)
+                    imgs_found[file] = file
+        # Next get list of classes
+        trainer_classes = self.trainer.save_img_info
+        trainer_task = self.trainer.task.value
+        return json.dumps({'status': 'OK', 'imgs_found':imgs_found, "trainer_classes": trainer_classes, 'trainer_task': trainer_task})
 
     # Rendering Functions
     # /

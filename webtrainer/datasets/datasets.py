@@ -52,7 +52,6 @@ class TrainerDataset(object):
     def load_supported_dataset(self):
         if self.transforms is None:
             self.transforms = torchvision.transforms.ToTensor()
-
         if self.dataset_name == "CIFAR10":
             self.train_dataset = datasets.CIFAR10('data/', train=True, download=True, transform=self.transforms)
             self.test_dataset = datasets.CIFAR10('data/', train=False, download=True, transform=self.transforms)

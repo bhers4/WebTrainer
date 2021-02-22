@@ -223,6 +223,7 @@ function check_status(){
             test_accs = response.test_accs;
             train_accs = response.train_accs;
             curr_active = response.curr_active;
+            trainer_task = response.trainer_task;
             if(curr_active==false){
                 clearInterval(interval_id);
                 enable_boxes();
@@ -237,17 +238,18 @@ function check_status(){
             train_graph.data.datasets[0].data = epoch_losses;
             train_graph.data.datasets[1].data = epoch_test_losses;
             train_graph.update();
-
-            acc_graphs = document.getElementById('acc_graphs');
-            acc_chart2d = acc_graphs.getContext('2d');
-            x_axis = [];
-            for(i=0;i<epoch_losses.length;i++){
-                x_axis.push(i);
+            if (trainer_task == 1){
+                acc_graphs = document.getElementById('acc_graphs');
+                acc_chart2d = acc_graphs.getContext('2d');
+                x_axis = [];
+                for(i=0;i<epoch_losses.length;i++){
+                    x_axis.push(i);
+                }
+                acc_graph.data.labels = x_axis;
+                acc_graph.data.datasets[0].data = train_accs;
+                acc_graph.data.datasets[1].data = test_accs;
+                acc_graph.update();
             }
-            acc_graph.data.labels = x_axis;
-            acc_graph.data.datasets[0].data = train_accs;
-            acc_graph.data.datasets[1].data = test_accs;
-            acc_graph.update();
         }
     });
 
@@ -258,25 +260,66 @@ function check_status(){
         dataType: 'json',
         success: (response)=>{
             var imgs_found = response.imgs_found;
-            // console.log("Images found: ", imgs_found.length);
-            // Get imgs row
-            var imgs_row_div = document.getElementById('imgs_row');
-            console.log("imgs row div: ", imgs_row_div);
-            if (imgs_row_div.innerHTML != ""){
-                imgs_row_div.innerHTML = "";  // This clears the div
+            var trainer_classes = response.trainer_classes;
+            var trainer_task = response.trainer_task;
+            console.log("Trainer task: ", trainer_task);
+            if (trainer_task == 1){
+                var targets = [];
+                targets.push(trainer_classes['target_0']);
+                targets.push(trainer_classes['target_1']);
+                targets.push(trainer_classes['target_2']);
+                // Pred
+                var predictions = [];
+                predictions.push(trainer_classes['pred_0']);
+                predictions.push(trainer_classes['pred_1']);
+                predictions.push(trainer_classes['pred_2']);
+                // Images
+                var imgs = [];
+                imgs.push(imgs_found['data_0.png']);
+                imgs.push(imgs_found['data_1.png']);
+                imgs.push(imgs_found['data_2.png']);
+                // Get imgs row
+                var imgs_row_div = document.getElementById('imgs_row');
+                if (imgs_row_div.innerHTML != ""){
+                    imgs_row_div.innerHTML = "";  // This clears the div
+                }
+                var i;
+                for(i=0;i<(imgs.length);i++){
+                    // Create overall div (lg-4 md-6)
+                    var img_div = document.createElement('div');
+                    img_div.className = "col-lg-4 col-md-6";
+                    // Create a div to put all this in
+                    // Sub div for img
+                    var img_holder = document.createElement('div');
+                    img_holder.className = "col-lg-12 col-md-12";
+                    var actual_img = document.createElement('img');
+                    var seconds = new Date().getTime() / 1000;
+                    seconds = parseInt(seconds);
+                    
+                    actual_img.src = "webui/static/images/" + imgs[i] + "?" + seconds;
+    
+                    actual_img.style.width = "80%";
+                    actual_img.style.margin = "1rem";
+                    // Add img to col then add col to row
+                    img_holder.appendChild(actual_img);
+                    img_div.appendChild(img_holder);
+                    // Prediction div
+                    var tag_holder = document.createElement('div');
+                    tag_holder.className = "col-lg-12 col-md-12";
+                    // Create h3 with the class
+                    var img_tag = document.createElement('h4');
+    
+                    img_tag.innerText = "Target: " + targets[i];
+                    var pred_tag = document.createElement('h4');
+                    pred_tag.innerText = "Pred: " + predictions[i];
+                    tag_holder.appendChild(img_tag);
+                    tag_holder.appendChild(pred_tag);
+                    img_div.appendChild(tag_holder);
+                    imgs_row_div.appendChild(img_div);
+                    // imgs_row_div.appendChild(img_tag);
+                }
             }
-            var i;
-            for(i=0;i<(imgs_found.length);i++){
-                // Create overall div (lg-4 md-6)
-                var img_div = document.createElement('div');
-                img_div.className = "col-lg-4 col-md-6";
-                var actual_img = document.createElement('img');
-                actual_img.src = "static/images/" + imgs_found[i];
-                console.log("Actual img src: ", actual_img.src);
-                // Add img to col then add col to row
-                img_div.appendChild(actual_img);
-                imgs_row_div.appendChild(img_div);
-            }
+            
         }
     });
 
