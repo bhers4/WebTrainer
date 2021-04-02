@@ -3,6 +3,7 @@ import os
 import json
 import threading
 
+
 class WebInterface:
 
     def __init__(self, name, ip_config='0.0.0.0', port=5000):
@@ -24,6 +25,8 @@ class WebInterface:
     def setup_routes(self):
         # Main route
         self.add_endpoint('/', endpoint_name='main_page', handler=self.render_mainpage, methods=['GET'])
+        # TESTING
+        self.add_endpoint('/react', endpoint_name='react_main', handler=self.render_main_react, methods=['GET'])
         # Basic js file route
         self.add_endpoint('/webui/static/<file>', endpoint_name='server static files', handler=self.get_static_file,
                           methods=['GET'])
@@ -35,6 +38,8 @@ class WebInterface:
         self.add_endpoint('/train/data/', endpoint_name='train_data', handler=self.get_training_data, methods=['GET'])
         self.add_endpoint('/train/add', endpoint_name='add_more_epochs', handler=self.add_more_epochs, methods=['POST'])
         self.add_endpoint('/train/imgs', endpoint_name='show_train_imgs', handler=self.get_train_imgs, methods=['GET'])
+        # Run info
+        self.add_endpoint('/run/info', endpoint_name='run_info', handler=self.get_run_info, methods=['GET'])
         return
 
     def add_endpoint(self, endpoint=None, endpoint_name=None, handler=None, methods=None):
@@ -131,12 +136,12 @@ class WebInterface:
         # Next get list of classes
         trainer_classes = self.trainer.save_img_info
         trainer_task = self.trainer.task.value
-        return json.dumps({'status': 'OK', 'imgs_found':imgs_found, "trainer_classes": trainer_classes, 'trainer_task': trainer_task})
+        return json.dumps({'status': 'OK', 'imgs_found': imgs_found, "trainer_classes": trainer_classes,
+                           'trainer_task': trainer_task})
 
     # Rendering Functions
     # /
     def render_mainpage(self):
-        print("Main Page")
         return render_template('main.html', name=self.name, dataset_name=self.trainer.config['dataset']['name'],
                                batch_size=self.trainer.config['dataset']['batch_size'],
                                shuffle=self.trainer.config['dataset']['shuffle'],
@@ -147,5 +152,25 @@ class WebInterface:
                                num_classes=self.trainer.config['models']['num_classes'],
                                lr=self.trainer.config['optim']['lr'],
                                optim=self.trainer.config['optim']['name'])
+
+    # /react --
+    def render_main_react(self):
+        return render_template("main_react.html")
+
+    # /run/info
+    def get_run_info(self):
+        name = self.name
+        dataset_name = self.trainer.config['dataset']['name']
+        batch_size = self.trainer.config['dataset']['batch_size']
+        split = self.trainer.config['dataset']['split']
+        num_epochs = self.trainer.config['run']['num_epochs']
+        model = self.trainer.config['models']['name']
+        task = self.trainer.config['models']['task']
+        num_classes = self.trainer.config['models']['num_classes']
+        lr = self.trainer.config['optim']['lr']
+        optim = self.trainer.config['optim']['name']
+        return json.dumps({'status': 'OK', "name": name, "dataset_name": dataset_name, "batch_size": batch_size,
+                           "split": split, "num_epochs": num_epochs, "model": model, "task": task,
+                           "num_classes": num_classes, "lr": lr, "optim": optim})
 
 

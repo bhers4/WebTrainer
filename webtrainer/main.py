@@ -57,7 +57,7 @@ def main(args):
     # Task
     nn_trainer.set_task(task)
     # Optim
-    optim = load_optim(configs_file['optim'], model)
+    optim = load_optim(configs_file['optim'], model, epochs=run_args['num_epochs'])
     nn_trainer.set_optim(optim)
     # Pass in configs
     nn_trainer.config = configs_file

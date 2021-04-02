@@ -106,7 +106,7 @@ class Trainer(object):
         self.test_correct = 0
         self.test_total = 0
         for i, data in enumerate(test_iter, 0):
-            self.optim.zero_grad()
+            self.zero_grad()
             inputs = data[0].to(self.device)
             targets = data[1].to(self.device)
             output = self.model(inputs)
@@ -120,9 +120,6 @@ class Trainer(object):
             elif self.task.value == 2:
                 targets = targets.squeeze(1)
                 local_loss = self.loss(output, targets.long())
-            # local_loss = self.loss(output, targets)
-            local_loss.backward()
-            self.optim.step()
             self.test_losses.append(local_loss.item())
         return np.mean(self.test_losses)
 
@@ -270,6 +267,24 @@ class Trainer(object):
                 plt.imsave(os.path.join(ui_static_dir, "data_2.png"), d_2)
         return
 
+    def zero_grad(self):
+        self.optim.zero_grad()
+        return
+
+    def step_optim(self, epoch=1):
+        # TODO refactor this double if statement into a class parameter OR make optim class i can call .step() and
+        # .zero_grad() and not have this code here
+        if 'scheduler' in self.config['optim'].keys():
+            use_scheduler = self.config['optim']['scheduler']
+            if use_scheduler:
+                # This is my custom version of lr scheduler since pytorch lr scheduler didnt work properly
+                self.optim.step(epoch=epoch)
+            else:
+                self.optim.step()
+        else:
+            self.optim.step()
+        return
+
     def train_network(self, train_info):
         self.check_parameters()
         if not self.valid_args:
@@ -284,7 +299,7 @@ class Trainer(object):
         if self.dataset_trainer.batch_size != batch_size:
             print("Batch size changed: ", batch_size)
         # Optim
-        if self.config['optim'] != lr:
+        if float(self.config['optim']['lr']) != float(lr):
             print("Learning rate changed: ", lr)
         # Run ID
         self.run_id = "".join(self.config['name'].split(" "))
@@ -309,9 +324,12 @@ class Trainer(object):
             self.train_total = 0
             # Get first 3 images
             self.save_epoch_imgs()
+            # TEST
+            self.optim.print_lr()
+            # END TEST
             # Enumerate over dataset
             for i, data in enumerate(self.train_dataset, 0):
-                self.optim.zero_grad()
+                self.zero_grad()  # Since I implemented lr scheduler bit more complicated to do this
                 inputs = data[0].to(self.device)
                 targets = data[1].to(self.device)
                 # Get output
@@ -327,7 +345,7 @@ class Trainer(object):
                     targets = targets.squeeze(1)
                     local_loss = self.loss(output, targets.long())
                 local_loss.backward()
-                self.optim.step()
+                self.step_optim(epoch=epoch)  # Call this because of lr scheduler
                 self.iter_losses.append(local_loss.item())
             # Append average loss of the epoch
             self.epoch_losses.append(np.mean(self.iter_losses))
@@ -340,12 +358,8 @@ class Trainer(object):
             self.test_accs.append(test_acc)
             self.train_accs.append(self.train_correct/(self.train_total+1))
             # End of Epoch Print
-            print("Epoch: %d, Loss: %.4f, Test Loss: %.4f, Train Acc: %.2f Test Acc: %.2f" % (epoch,
-                                                                                                  self.epoch_losses[
-                                                                                                      -1],
-                                                                                                  test_loss,
-                                                                                                  train_acc * 100,
-                                                                                                  test_acc * 100))
+            print("Epoch: %d, Loss: %.4f, Test Loss: %.4f, Train Acc: %.2f Test Acc: %.2f" %
+                  (epoch, self.epoch_losses[-1], test_loss, train_acc * 100, test_acc * 100))
         self.save()
         self.active = False
 
@@ -373,7 +387,12 @@ class Trainer(object):
         history_dir = os.path.join(os.getcwd(), "history")
         if not os.path.isdir(history_dir):
             os.mkdir(history_dir)
-        run_dir = os.path.join(history_dir, self.run_id)
+        # Make a project directory
+        project_dir = os.path.join(history_dir, self.project_name)
+        if not os.path.isdir(project_dir):
+            os.mkdir(project_dir)
+        # Now create run dir inside project dir
+        run_dir = os.path.join(project_dir, self.run_id)
         if not os.path.isdir(run_dir):
             os.mkdir(run_dir)
         json_file = os.path.join(run_dir, 'run.json')
