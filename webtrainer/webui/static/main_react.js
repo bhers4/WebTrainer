@@ -49,6 +49,8 @@ class RunInfo extends React.Component {
         this.acc_data = [];
         // Interval id
         this.interval_id = "";
+        // Placeholder for image div
+        this.image_div = "";
 
         this.get_run_info = this.get_run_info.bind(this);
         this.update_project_info = this.update_project_info.bind(this);
@@ -77,7 +79,7 @@ class RunInfo extends React.Component {
             marker: {color: 'blue'}
         }];
         //
-        Plotly.newPlot('plotly_div', this.graph_data);
+        // Plotly.newPlot('plotly_div', this.graph_data);
 
     }
 
@@ -133,7 +135,6 @@ class RunInfo extends React.Component {
             type: "GET",
             dataType: 'json',
             success: (response)=> {
-                console.log("Got run info ", response);
                 var name = response.name;
                 var dataset_name = response.dataset_name;
                 var batch_size = response.batch_size;
@@ -276,69 +277,140 @@ class RunInfo extends React.Component {
 
     get_graph_data(){
         $.ajax({
-        url:'/train/data/',
-        type:'GET',
-        dataType: 'json',
-        success: (response)=>{
-            var epoch_losses = response.epoch_loss;
-            var epoch_test_losses = response.epoch_test_losses;
-            var test_accs = response.test_accs;
-            var train_accs = response.train_accs;
-            var curr_active = response.curr_active;
-            var trainer_task = response.trainer_task;
-            if(curr_active==false){
-                clearInterval(this.interval_id);
-                enable_boxes();
+            url:'/train/data/',
+            type:'GET',
+            dataType: 'json',
+            success: (response)=>{
+                var epoch_losses = response.epoch_loss;
+                var epoch_test_losses = response.epoch_test_losses;
+                var test_accs = response.test_accs;
+                var train_accs = response.train_accs;
+                var curr_active = response.curr_active;
+                var trainer_task = response.trainer_task;
+                if(curr_active==false){
+                    clearInterval(this.interval_id);
+                    // enable_boxes();
+                }
+                var x_axis = [];
+                for(var i=0;i<epoch_losses.length;i++){
+                    x_axis.push(i);
+                }
+                this.graph_data = {
+                    x: x_axis,
+                    y: epoch_losses,
+                    mode: 'lines+markers',
+                    name: 'Train',
+                    marker: {color: 'blue'}
+                };
+                var test_loss = {
+                   x: x_axis,
+                   y: epoch_test_losses,
+                   mode: 'lines+markers',
+                   name: 'Test',
+                   marker: {color: 'red'}
+                };
+                var layout = {
+                    title: 'Loss'
+                };
+                //
+                Plotly.newPlot('loss_graph', [this.graph_data, test_loss], layout);
+
+                this.acc_data = {
+                   x: x_axis,
+                   y: train_accs,
+                   mode: 'lines+markers',
+                   name: 'Train',
+                   marker: {color: 'blue'}
+                };
+
+                var test_acc = {
+                   x: x_axis,
+                   y: test_accs,
+                   mode: 'lines+markers',
+                   name: 'Test',
+                   marker: {color: 'red'}
+                };
+
+                //
+                layout = {
+                    title: 'Accuracy'
+                };
+                //
+                Plotly.newPlot('accuracy_graph', [this.acc_data, test_acc], layout);
             }
-            var x_axis = [];
-            for(var i=0;i<epoch_losses.length;i++){
-                x_axis.push(i);
-            }
-            this.graph_data = {
-                x: x_axis,
-                y: epoch_losses,
-                mode: 'lines+markers',
-                name: 'Train',
-                marker: {color: 'blue'}
-            };
-            var test_loss = {
-               x: x_axis,
-               y: epoch_test_losses,
-               mode: 'lines+markers',
-               name: 'Test',
-               marker: {color: 'red'}
-            };
-            var layout = {
-                title: 'Loss'
-            };
-            //
-            Plotly.newPlot('loss_graph', [this.graph_data, test_loss], layout);
-
-            this.acc_data = {
-               x: x_axis,
-               y: train_accs,
-               mode: 'lines+markers',
-               name: 'Train',
-               marker: {color: 'blue'}
-            };
-
-            var test_acc = {
-               x: x_axis,
-               y: test_accs,
-               mode: 'lines+markers',
-               name: 'Test',
-               marker: {color: 'red'}
-            };
-
-            //
-            layout = {
-                title: 'Accuracy'
-            };
-            //
-            Plotly.newPlot('accuracy_graph', [this.acc_data, test_acc], layout);
-
-        }
         });
+        //
+        // **** Rewrite this into a list of React items, it doesnt like when I do {this.image_div} cause its not
+        // Typical var x = <div></div> its instead document.createElement shit
+        // $.ajax({
+        //     url:'/train/imgs/',
+        //     type:'GET',
+        //     dataType: 'json',
+        //     success: (response)=> {
+        //         var imgs_found = response.imgs_found;
+        //         var trainer_classes = response.trainer_classes;
+        //         var trainer_task = response.trainer_task;
+        //         // console.log("Trainer task: ", trainer_task);
+        //         if (trainer_task == 1) {
+        //             var targets = [];
+        //             targets.push(trainer_classes['target_0']);
+        //             targets.push(trainer_classes['target_1']);
+        //             targets.push(trainer_classes['target_2']);
+        //             // Pred
+        //             var predictions = [];
+        //             predictions.push(trainer_classes['pred_0']);
+        //             predictions.push(trainer_classes['pred_1']);
+        //             predictions.push(trainer_classes['pred_2']);
+        //             // Images
+        //             var imgs = [];
+        //             imgs.push(imgs_found['data_0.png']);
+        //             imgs.push(imgs_found['data_1.png']);
+        //             imgs.push(imgs_found['data_2.png']);
+        //             // Get imgs row
+        //             var imgs_row_div = document.createElement('div');
+        //             imgs_row_div.className = "row";
+        //             if (imgs_row_div.innerHTML != "") {
+        //                 imgs_row_div.innerHTML = "";  // This clears the div
+        //             }
+        //             var i;
+        //             for(i=0;i<(imgs.length);i++) {
+        //                 // Create overall div (lg-4 md-6)
+        //                 var img_var = document.createElement('div');
+        //                 img_var.className = "col-lg-4 col-md-6";
+        //                 // Create a div to put all this in
+        //                 // Sub div for img
+        //                 var img_holder = document.createElement('div');
+        //                 img_holder.className = "col-lg-12 col-md-12";
+        //                 var actual_img = document.createElement('img');
+        //                 var seconds = new Date().getTime() / 1000;
+        //                 seconds = parseInt(seconds);
+        //
+        //                 actual_img.src = "webui/static/images/" + imgs[i] + "?" + seconds;
+        //
+        //                 actual_img.style.width = "80%";
+        //                 actual_img.style.margin = "1rem";
+        //                 // Add img to col then add col to row
+        //                 img_holder.appendChild(actual_img);
+        //                 img_var.appendChild(img_holder);
+        //                 // Prediction div
+        //                 var tag_holder = document.createElement('div');
+        //                 tag_holder.className = "col-lg-12 col-md-12";
+        //                 // Create h3 with the class
+        //                 var img_tag = document.createElement('h4');
+        //
+        //                 img_tag.innerText = "Target: " + targets[i];
+        //                 var pred_tag = document.createElement('h4');
+        //                 pred_tag.innerText = "Pred: " + predictions[i];
+        //                 tag_holder.appendChild(img_tag);
+        //                 tag_holder.appendChild(pred_tag);
+        //                 img_var.appendChild(tag_holder);
+        //                 imgs_row_div.appendChild(img_var);
+        //             }
+        //             this.image_div = imgs_row_div;
+        //             this.setState({"image_div": this.image_div});
+        //         }
+        //     }
+        // });
     }
 
     render(){
@@ -412,7 +484,7 @@ class RunInfo extends React.Component {
             <div className="col-lg-12 col-md-12">
                 <h3>Train</h3>
             </div>
-            <div className="col-lg-12">
+            <div className="col-lg-12" style={{margin: "0.25rem"}}>
                 <button className="btn btn-primary" ref={this.train_btn_ref} onClick={this.start_training}>
                     Start Training</button>
             </div>
@@ -428,13 +500,13 @@ class RunInfo extends React.Component {
         </div>
         //
         var run_more_epochs = <div className="row">
-            <div className="col-lg-3 col-md-4 col-sm-6">
+            <div className="col-lg-3 col-md-4 col-sm-6" style={{margin: "0.25rem"}}>
                 <button className="btn btn-success" onClick={this.run_1_epoch}>Run 1 More Epoch</button>
             </div>
-            <div className="col-lg-3 col-md-4 col-sm-6">
+            <div className="col-lg-3 col-md-4 col-sm-6" style={{margin: "0.25rem"}}>
                 <button className="btn btn-secondary" onClick={this.run_5_epoch}>Run 5 More Epochs</button>
             </div>
-            <div className="col-lg-3 col-md-4 col-sm-6">
+            <div className="col-lg-3 col-md-4 col-sm-6" style={{margin: "0.25rem"}}>
                 <button className="btn btn-info" onClick={this.run_10_epoch}>Run 10 More Epochs</button>
             </div>
         </div>;
@@ -447,6 +519,7 @@ class RunInfo extends React.Component {
                 {train_div}
                 {graph_divs}
                 {run_more_epochs}
+                {this.image_div}
             </div>
         )
     }

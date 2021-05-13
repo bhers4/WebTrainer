@@ -6,7 +6,7 @@
              "/home/ben/Documents/img_library/street_view"],
     "save": true,
     "load": true,
-    "batch_size": 2800,
+    "batch_size": 2400,
     "shuffle": true,
     "split": 0.8
   },

@@ -2,6 +2,7 @@ import argparse
 import json
 from datasets.datasets import parse_dataset
 from trainer.trainer import Trainer
+from trainer.vision_embedding import VisionEmbedding
 from models.models import load_models
 from loss.loss import load_loss
 from optim.optim import load_optim
@@ -44,7 +45,10 @@ def main(args):
         task = ModelTasks.classification
     
     # Trainer
-    nn_trainer = Trainer()
+    if configs_file['name'] == "vision_embedding":
+        nn_trainer = VisionEmbedding()
+    else:
+        nn_trainer = Trainer()
     # Set number of epochs
     nn_trainer.set_epochs(run_args['num_epochs'])
     # Set Datasets

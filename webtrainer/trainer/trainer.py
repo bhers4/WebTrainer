@@ -141,7 +141,7 @@ class Trainer(object):
             if self.dataset_trainer.batch_size != batch_size:
                 print("Batch size changed: ", batch_size)
             # Optim
-            if float(self.config['optim']) != lr:
+            if float(self.config['optim']['lr']) != lr:
                 print("Learning rate changed: ", lr)
             # Set Active Flag
             self.active = True

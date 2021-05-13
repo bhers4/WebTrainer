@@ -27,6 +27,8 @@ class WebInterface:
         self.add_endpoint('/', endpoint_name='main_page', handler=self.render_mainpage, methods=['GET'])
         # TESTING
         self.add_endpoint('/react', endpoint_name='react_main', handler=self.render_main_react, methods=['GET'])
+        # Home page
+        self.add_endpoint('/home', endpoint_name="home_page", handler=self.render_home_page, methods=['GET'])
         # Basic js file route
         self.add_endpoint('/webui/static/<file>', endpoint_name='server static files', handler=self.get_static_file,
                           methods=['GET'])
@@ -37,7 +39,7 @@ class WebInterface:
         self.add_endpoint('/train', endpoint_name='train_start', handler=self.train_page, methods=['POST'])
         self.add_endpoint('/train/data/', endpoint_name='train_data', handler=self.get_training_data, methods=['GET'])
         self.add_endpoint('/train/add', endpoint_name='add_more_epochs', handler=self.add_more_epochs, methods=['POST'])
-        self.add_endpoint('/train/imgs', endpoint_name='show_train_imgs', handler=self.get_train_imgs, methods=['GET'])
+        self.add_endpoint('/train/imgs/', endpoint_name='show_train_imgs', handler=self.get_train_imgs, methods=['GET'])
         # Run info
         self.add_endpoint('/run/info', endpoint_name='run_info', handler=self.get_run_info, methods=['GET'])
         return
@@ -172,5 +174,9 @@ class WebInterface:
         return json.dumps({'status': 'OK', "name": name, "dataset_name": dataset_name, "batch_size": batch_size,
                            "split": split, "num_epochs": num_epochs, "model": model, "task": task,
                            "num_classes": num_classes, "lr": lr, "optim": optim})
+    
+    # Home page
+    def render_home_page(self):
+        return render_template("home.html")
 
 
